@@ -20,7 +20,7 @@ import (
 // Handler holds the HTTP handler dependencies.
 type Handler struct {
 	store        *Store
-	baseURL      string
+	baseURL      string // fallback when request headers don't provide enough info
 	cookieSecret []byte
 }
 
@@ -31,6 +31,21 @@ func NewHandler(store *Store, baseURL string, cookieSecret []byte) *Handler {
 		baseURL:      baseURL,
 		cookieSecret: cookieSecret,
 	}
+}
+
+// resolveBaseURL derives the base URL from the request, falling back to the configured value.
+func (h *Handler) resolveBaseURL(r *http.Request) string {
+	scheme := "http"
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	} else if r.TLS != nil {
+		scheme = "https"
+	}
+	host := r.Host
+	if host == "" {
+		return h.baseURL
+	}
+	return fmt.Sprintf("%s://%s", scheme, host)
 }
 
 // Routes returns the chi router with all routes configured.
@@ -138,7 +153,7 @@ func (h *Handler) CreateSession(w http.ResponseWriter, r *http.Request) {
 		ID:        id,
 		Secret:    secret,
 		ExpiresAt: expiresAt.Format(time.RFC3339),
-		URL:       fmt.Sprintf("%s/s/%s", strings.TrimSuffix(h.baseURL, "/"), id),
+		URL:       fmt.Sprintf("%s/s/%s", strings.TrimSuffix(h.resolveBaseURL(r), "/"), id),
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -205,7 +220,7 @@ func (h *Handler) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		ID:        session.ID,
 		Secret:    session.Secret,
 		ExpiresAt: session.ExpiresAt.Format(time.RFC3339),
-		URL:       fmt.Sprintf("%s/s/%s", strings.TrimSuffix(h.baseURL, "/"), session.ID),
+		URL:       fmt.Sprintf("%s/s/%s", strings.TrimSuffix(h.resolveBaseURL(r), "/"), session.ID),
 	}
 
 	json.NewEncoder(w).Encode(resp)
