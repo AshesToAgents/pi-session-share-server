@@ -1,4 +1,6 @@
 docs/
 pi-session-share-server
 *.db
+*.db-wal
+*.db-shm
 .env
