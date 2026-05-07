@@ -176,7 +176,8 @@ func (s *Store) DeleteSession(id, secret string) error {
 
 // CleanupExpired removes all expired sessions and returns the count of deleted sessions.
 func (s *Store) CleanupExpired() (int, error) {
-	query := `DELETE FROM sessions WHERE expires_at < datetime('now')`
+	// Use strftime with UTC to normalize timezone comparison
+	query := `DELETE FROM sessions WHERE strftime('%Y-%m-%dT%H:%M:%SZ', expires_at, '+00:00') < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', 'utc')`
 	result, err := s.db.Exec(query)
 	if err != nil {
 		return 0, err
