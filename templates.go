@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 )
 
 //go:embed templates/password.html
@@ -21,7 +22,7 @@ var readmeHTML []byte
 
 func init() {
 	var buf strings.Builder
-	if err := goldmark.Convert([]byte(readmeMarkdown), &buf); err != nil {
+	if err := goldmark.New(goldmark.WithExtensions(extension.GFM)).Convert([]byte(readmeMarkdown), &buf); err != nil {
 		panic("failed to render README: " + err.Error())
 	}
 	readmeHTML = []byte(wrapReadmeHTML(buf.String()))
