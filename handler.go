@@ -324,19 +324,35 @@ func (h *Handler) Authenticate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Header().Set("Content-Type", "text/html")
-		html := strings.Replace(passwordHTML, "{{error}}", `<p class="error">Invalid request</p>`, 1)
-		html = strings.Replace(html, "{{session_id}}", id, 1)
-		w.Write([]byte(html))
-		return
+	var password string
+	contentType := r.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "application/json") {
+		var req struct {
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Header().Set("Content-Type", "text/html")
+			html := strings.Replace(passwordHTML, "{{error}}", `<p class="error">Invalid request</p>`, 1)
+			html = strings.Replace(html, "{{session_id}}", id, 1)
+			w.Write([]byte(html))
+			return
+		}
+		password = req.Password
+	} else {
+		// form-urlencoded (from the password form)
+		if err := r.ParseForm(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Header().Set("Content-Type", "text/html")
+			html := strings.Replace(passwordHTML, "{{error}}", `<p class="error">Invalid request</p>`, 1)
+			html = strings.Replace(html, "{{session_id}}", id, 1)
+			w.Write([]byte(html))
+			return
+		}
+		password = r.FormValue("password")
 	}
 
-	if err := bcrypt.CompareHashAndPassword(session.Password, []byte(req.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword(session.Password, []byte(password)); err != nil {
 		w.WriteHeader(http.StatusForbidden)
 		w.Header().Set("Content-Type", "text/html")
 		html := strings.Replace(passwordHTML, "{{error}}", `<p class="error">Incorrect password</p>`, 1)

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -531,6 +533,63 @@ func TestAuthenticate_NoPassword(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("Expected status 400, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAuthenticate_FormEncoded(t *testing.T) {
+	t.Parallel()
+
+	handler, store := newTestHandler(t)
+	defer store.Close()
+	router := handler.Routes()
+
+	createResp := createTestSessionViaRouter(t, router, "secret html", 3600, stringPtr("mypassword"))
+
+	form := url.Values{"password": {"mypassword"}}
+	req := httptest.NewRequest(http.MethodPost, "/s/"+createResp.ID+"/auth", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected status 303, got %d. Body: %s", w.Code, w.Body.String())
+	}
+	location := w.Header().Get("Location")
+	if location != "/s/"+createResp.ID {
+		t.Errorf("Expected redirect to /s/%s, got %s", createResp.ID, location)
+	}
+	cookies := w.Result().Cookies()
+	found := false
+	for _, c := range cookies {
+		if c.Name == cookieName(createResp.ID) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Expected auth cookie to be set")
+	}
+}
+
+func TestAuthenticate_FormEncodedWrongPassword(t *testing.T) {
+	t.Parallel()
+
+	handler, store := newTestHandler(t)
+	defer store.Close()
+	router := handler.Routes()
+
+	createResp := createTestSessionViaRouter(t, router, "secret html", 3600, stringPtr("mypassword"))
+
+	form := url.Values{"password": {"wrongpassword"}}
+	req := httptest.NewRequest(http.MethodPost, "/s/"+createResp.ID+"/auth", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Expected status 403, got %d. Body: %s", w.Code, w.Body.String())
 	}
 }
 
