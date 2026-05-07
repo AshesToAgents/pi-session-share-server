@@ -52,6 +52,9 @@ func (h *Handler) resolveBaseURL(r *http.Request) string {
 func (h *Handler) Routes() *chi.Mux {
 	r := chi.NewRouter()
 
+	// Root — serve README
+	r.Get("/", h.ServeReadme)
+
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/sessions", h.CreateSession)
@@ -434,6 +437,11 @@ func (h *Handler) servePasswordForm(w http.ResponseWriter, sessionID, errorMsg s
 }
 
 // serveError serves the error page.
+func (h *Handler) ServeReadme(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(readmeHTML)
+}
+
 func (h *Handler) serveError(w http.ResponseWriter, title, message string, status int) {
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(status)
