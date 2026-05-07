@@ -407,7 +407,7 @@ func (h *Handler) serveError(w http.ResponseWriter, title, message string, statu
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(status)
 
-	html := strings.Replace(errorHTML, "{{title}}", title, 1)
+	html := strings.Replace(errorHTML, "{{title}}", title, -1)
 	html = strings.Replace(html, "{{message}}", message, 1)
 
 	w.Write([]byte(html))
