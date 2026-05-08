@@ -1,9 +1,7 @@
 package main
 
 import (
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -14,22 +12,19 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // Handler holds the HTTP handler dependencies.
 type Handler struct {
-	store        *Store
-	baseURL      string // fallback when request headers don't provide enough info
-	cookieSecret []byte
+	store   *Store
+	baseURL string // fallback when request headers don't provide enough info
 }
 
 // NewHandler creates a new Handler instance.
-func NewHandler(store *Store, baseURL string, cookieSecret []byte) *Handler {
+func NewHandler(store *Store, baseURL string) *Handler {
 	return &Handler{
-		store:        store,
-		baseURL:      baseURL,
-		cookieSecret: cookieSecret,
+		store:   store,
+		baseURL: baseURL,
 	}
 }
 
@@ -65,7 +60,6 @@ func (h *Handler) Routes() *chi.Mux {
 	// Public session viewing routes
 	r.Route("/s", func(r chi.Router) {
 		r.Get("/{id}", h.ViewSession)
-		r.Post("/{id}/auth", h.Authenticate)
 	})
 
 	return r
@@ -92,7 +86,6 @@ func generateSecret() (string, error) {
 // CreateSessionRequest represents the JSON request for creating a session.
 type CreateSessionRequest struct {
 	HTML       string `json:"html"`
-	Password   string `json:"password,omitempty"`
 	TTLSeconds int    `json:"ttl_seconds"`
 }
 
@@ -137,17 +130,7 @@ func (h *Handler) CreateSession(w http.ResponseWriter, r *http.Request) {
 
 	expiresAt := time.Now().Add(time.Duration(ttl) * time.Second)
 
-	var passwordHash []byte
-	if req.Password != "" {
-		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-		if err != nil {
-			http.Error(w, "Failed to hash password", http.StatusInternalServerError)
-			return
-		}
-		passwordHash = hash
-	}
-
-	if err := h.store.CreateSession(id, secret, req.HTML, passwordHash, expiresAt); err != nil {
+	if err := h.store.CreateSession(id, secret, req.HTML, expiresAt); err != nil {
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 		return
 	}
@@ -195,17 +178,7 @@ func (h *Handler) UpdateSession(w http.ResponseWriter, r *http.Request) {
 
 	expiresAt := time.Now().Add(time.Duration(ttl) * time.Second)
 
-	var passwordHash []byte
-	if req.Password != "" {
-		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-		if err != nil {
-			http.Error(w, "Failed to hash password", http.StatusInternalServerError)
-			return
-		}
-		passwordHash = hash
-	}
-
-	session, err := h.store.UpdateSession(id, secret, req.HTML, passwordHash, expiresAt)
+	session, err := h.store.UpdateSession(id, secret, req.HTML, expiresAt)
 	if err != nil {
 		if errors.Is(err, ErrSessionNotFound) {
 			http.Error(w, "Session not found", http.StatusNotFound)
@@ -289,154 +262,13 @@ func (h *Handler) ViewSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// No password set - serve HTML directly
-	if len(session.Password) == 0 {
-		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(session.HTML))
-		return
-	}
-
-	// Password set - check for valid cookie
-	cookie, err := r.Cookie(cookieName(id))
-	if err != nil || !h.validateCookie(cookie, id) {
-		h.servePasswordForm(w, id, "")
-		return
-	}
-
-	// Valid cookie - serve HTML
+	// Always serve the viewer page with embedded ciphertext
 	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(session.HTML))
-}
-
-// Authenticate handles POST /s/{id}/auth
-func (h *Handler) Authenticate(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		h.serveError(w, "Bad Request", "Session ID required", http.StatusBadRequest)
-		return
-	}
-
-	session, err := h.store.GetSession(id)
-	if err != nil {
-		h.serveError(w, "Not Found", "Session not found or has expired", http.StatusNotFound)
-		return
-	}
-
-	if len(session.Password) == 0 {
-		h.serveError(w, "Bad Request", "No password required for this session", http.StatusBadRequest)
-		return
-	}
-
-	var password string
-	contentType := r.Header.Get("Content-Type")
-	if strings.HasPrefix(contentType, "application/json") {
-		var req struct {
-			Password string `json:"password"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Header().Set("Content-Type", "text/html")
-			html := strings.Replace(passwordHTML, "{{error}}", `<p class="error">Invalid request</p>`, 1)
-			html = strings.Replace(html, "{{session_id}}", id, 1)
-			w.Write([]byte(html))
-			return
-		}
-		password = req.Password
-	} else {
-		// form-urlencoded (from the password form)
-		if err := r.ParseForm(); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Header().Set("Content-Type", "text/html")
-			html := strings.Replace(passwordHTML, "{{error}}", `<p class="error">Invalid request</p>`, 1)
-			html = strings.Replace(html, "{{session_id}}", id, 1)
-			w.Write([]byte(html))
-			return
-		}
-		password = r.FormValue("password")
-	}
-
-	if err := bcrypt.CompareHashAndPassword(session.Password, []byte(password)); err != nil {
-		w.WriteHeader(http.StatusForbidden)
-		w.Header().Set("Content-Type", "text/html")
-		html := strings.Replace(passwordHTML, "{{error}}", `<p class="error">Incorrect password</p>`, 1)
-		html = strings.Replace(html, "{{session_id}}", id, 1)
-		w.Write([]byte(html))
-		return
-	}
-
-	// Set HMAC-signed cookie
-	h.setAuthCookie(w, id, session.ExpiresAt)
-
-	http.Redirect(w, r, fmt.Sprintf("/s/%s", id), http.StatusSeeOther)
-}
-
-// cookieName returns the cookie name for a given session ID.
-func cookieName(sessionID string) string {
-	return fmt.Sprintf("pi-share-%s", sessionID)
-}
-
-// signCookie creates an HMAC-SHA256 signature for the cookie payload.
-func (h *Handler) signCookie(payload string) string {
-	mac := hmac.New(sha256.New, h.cookieSecret)
-	mac.Write([]byte(payload))
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
-// validateCookie verifies the cookie signature and expiration.
-func (h *Handler) validateCookie(cookie *http.Cookie, sessionID string) bool {
-	parts := strings.Split(cookie.Value, "|")
-	if len(parts) != 2 {
-		return false
-	}
-
-	payload := fmt.Sprintf("%s:%s", sessionID, parts[1])
-	expectedSig := h.signCookie(payload)
-	if !hmac.Equal([]byte(parts[0]), []byte(expectedSig)) {
-		return false
-	}
-
-	// Check expiration
-	expiresAt, err := time.Parse(time.RFC3339, parts[1])
-	if err != nil {
-		return false
-	}
-
-	return time.Now().Before(expiresAt)
-}
-
-// setAuthCookie sets the HMAC-signed authentication cookie.
-func (h *Handler) setAuthCookie(w http.ResponseWriter, sessionID string, expiresAt time.Time) {
-	payload := fmt.Sprintf("%s:%s", sessionID, expiresAt.Format(time.RFC3339))
-	sig := h.signCookie(payload)
-	value := fmt.Sprintf("%s|%s", sig, expiresAt.Format(time.RFC3339))
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName(sessionID),
-		Value:    value,
-		Path:     "/",
-		Expires:  expiresAt,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-// servePasswordForm serves the password entry form.
-func (h *Handler) servePasswordForm(w http.ResponseWriter, sessionID, errorMsg string) {
-	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(http.StatusOK)
-
-	html := passwordHTML
-	if errorMsg != "" {
-		html = strings.Replace(html, "{{error}}", fmt.Sprintf(`<p class="error">%s</p>`, errorMsg), 1)
-	} else {
-		html = strings.Replace(html, "{{error}}", "", 1)
-	}
-	html = strings.Replace(html, "{{session_id}}", sessionID, 1)
-
+	html := strings.Replace(viewerHTML, "{{ciphertext}}", session.HTML, 1)
 	w.Write([]byte(html))
 }
 
-// serveError serves the error page.
+// ServeReadme serves the README at the root route.
 func (h *Handler) ServeReadme(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(readmeHTML)

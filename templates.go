@@ -8,8 +8,8 @@ import (
 	"github.com/yuin/goldmark/extension"
 )
 
-//go:embed templates/password.html
-var passwordHTML string
+//go:embed templates/viewer.html
+var viewerHTML string
 
 //go:embed templates/error.html
 var errorHTML string

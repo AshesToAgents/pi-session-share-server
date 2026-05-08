@@ -24,11 +24,10 @@ func TestCleanup_ExpiresSessions(t *testing.T) {
 		ID:        "expired",
 		Secret:    "secret",
 		HTML:      "<html>expired</html>",
-		Password:  nil,
 		CreatedAt: time.Now().Add(-2 * time.Hour),
 		ExpiresAt: time.Now().Add(-1 * time.Hour), // Expired 1 hour ago
 	}
-	if err := store.CreateSession(expiredSession.ID, expiredSession.Secret, expiredSession.HTML, expiredSession.Password, expiredSession.ExpiresAt); err != nil {
+	if err := store.CreateSession(expiredSession.ID, expiredSession.Secret, expiredSession.HTML, expiredSession.ExpiresAt); err != nil {
 		t.Fatalf("Failed to create expired session: %v", err)
 	}
 
@@ -37,11 +36,10 @@ func TestCleanup_ExpiresSessions(t *testing.T) {
 		ID:        "valid",
 		Secret:    "secret",
 		HTML:      "<html>valid</html>",
-		Password:  nil,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour), // Expires in 1 hour
 	}
-	if err := store.CreateSession(validSession.ID, validSession.Secret, validSession.HTML, validSession.Password, validSession.ExpiresAt); err != nil {
+	if err := store.CreateSession(validSession.ID, validSession.Secret, validSession.HTML, validSession.ExpiresAt); err != nil {
 		t.Fatalf("Failed to create valid session: %v", err)
 	}
 
@@ -123,11 +121,10 @@ func TestCleanup_GoroutineCleansExpired(t *testing.T) {
 			ID:        "exp" + string(rune('a'+i)),
 			Secret:    "secret",
 			HTML:      "<html>expired</html>",
-			Password:  nil,
 			CreatedAt: time.Now().Add(-2 * time.Hour),
 			ExpiresAt: time.Now().Add(-1 * time.Hour),
 		}
-		if err := store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt); err != nil {
+		if err := store.CreateSession(session.ID, session.Secret, session.HTML, session.ExpiresAt); err != nil {
 			t.Fatalf("Failed to create expired session: %v", err)
 		}
 	}
@@ -137,11 +134,10 @@ func TestCleanup_GoroutineCleansExpired(t *testing.T) {
 		ID:        "valid",
 		Secret:    "secret",
 		HTML:      "<html>valid</html>",
-		Password:  nil,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
-	if err := store.CreateSession(validSession.ID, validSession.Secret, validSession.HTML, validSession.Password, validSession.ExpiresAt); err != nil {
+	if err := store.CreateSession(validSession.ID, validSession.Secret, validSession.HTML, validSession.ExpiresAt); err != nil {
 		t.Fatalf("Failed to create valid session: %v", err)
 	}
 
@@ -206,11 +202,10 @@ func TestCleanup_DoesNotAffectValidSessions(t *testing.T) {
 		ID:        "longlived",
 		Secret:    "secret",
 		HTML:      "<html>long lived</html>",
-		Password:  nil,
 		CreatedAt: time.Now(),
 		ExpiresAt: longExpiry,
 	}
-	if err := store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt); err != nil {
+	if err := store.CreateSession(session.ID, session.Secret, session.HTML, session.ExpiresAt); err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
 
@@ -229,47 +224,6 @@ func TestCleanup_DoesNotAffectValidSessions(t *testing.T) {
 	_, err = store.GetSession("longlived")
 	if err != nil {
 		t.Errorf("Long-lived session should still exist after multiple cleanups: %v", err)
-	}
-
-	store.Close()
-}
-
-// TestCleanup_WithPasswordProtectedSessions tests cleanup with password-protected sessions.
-func TestCleanup_WithPasswordProtectedSessions(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.db")
-	store, err := NewStore(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-
-	// Create a password-protected expired session
-	expiredSession := &Session{
-		ID:        "protected",
-		Secret:    "secret",
-		HTML:      "<html>protected expired</html>",
-		Password:  []byte("$2a$10$hashedpassword"), // Fake bcrypt hash
-		CreatedAt: time.Now().Add(-2 * time.Hour),
-		ExpiresAt: time.Now().Add(-1 * time.Hour),
-	}
-	if err := store.CreateSession(expiredSession.ID, expiredSession.Secret, expiredSession.HTML, expiredSession.Password, expiredSession.ExpiresAt); err != nil {
-		t.Fatalf("Failed to create protected expired session: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	StartCleanup(ctx, store, 20*time.Millisecond)
-
-	// Wait for cleanup
-	time.Sleep(200 * time.Millisecond)
-
-	cancel()
-	time.Sleep(50 * time.Millisecond)
-
-	// Protected expired session should also be removed
-	_, err = store.GetSession("protected")
-	if err != ErrSessionNotFound {
-		t.Error("Protected expired session should be removed by cleanup")
 	}
 
 	store.Close()

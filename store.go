@@ -18,7 +18,6 @@ var ErrForbidden = errors.New("forbidden: secret mismatch")
 type Session struct {
 	ID        string
 	Secret    string
-	Password  []byte // bcrypt hash, nil if no password
 	HTML      string
 	CreatedAt time.Time
 	ExpiresAt time.Time
@@ -47,7 +46,6 @@ func NewStore(dbPath string) (*Store, error) {
 	CREATE TABLE IF NOT EXISTS sessions (
 		id         TEXT PRIMARY KEY,
 		secret     TEXT NOT NULL,
-		password   TEXT,
 		html       TEXT NOT NULL,
 		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
 		expires_at DATETIME NOT NULL
@@ -69,43 +67,33 @@ func (s *Store) Close() error {
 }
 
 // CreateSession creates a new session in the database.
-func (s *Store) CreateSession(id, secret, html string, password []byte, expiresAt time.Time) error {
-	var passwordStr sql.NullString
-	if len(password) > 0 {
-		passwordStr = sql.NullString{String: string(password), Valid: true}
-	}
-
+func (s *Store) CreateSession(id, secret, html string, expiresAt time.Time) error {
 	query := `
-		INSERT INTO sessions (id, secret, password, html, expires_at)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO sessions (id, secret, html, expires_at)
+		VALUES (?, ?, ?, ?)
 	`
-	_, err := s.db.Exec(query, id, secret, passwordStr, html, expiresAt.Format(time.RFC3339))
+	_, err := s.db.Exec(query, id, secret, html, expiresAt.Format(time.RFC3339))
 	return err
 }
 
 // GetSession retrieves a session by ID if it exists and hasn't expired.
 func (s *Store) GetSession(id string) (*Session, error) {
 	query := `
-		SELECT id, secret, password, html, created_at, expires_at
+		SELECT id, secret, html, created_at, expires_at
 		FROM sessions
 		WHERE id = ? AND expires_at > datetime('now')
 	`
 	row := s.db.QueryRow(query, id)
 
 	var session Session
-	var passwordStr sql.NullString
 	var createdAtStr, expiresAtStr string
 
-	err := row.Scan(&session.ID, &session.Secret, &passwordStr, &session.HTML, &createdAtStr, &expiresAtStr)
+	err := row.Scan(&session.ID, &session.Secret, &session.HTML, &createdAtStr, &expiresAtStr)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrSessionNotFound
 		}
 		return nil, err
-	}
-
-	if passwordStr.Valid {
-		session.Password = []byte(passwordStr.String)
 	}
 
 	session.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
@@ -115,7 +103,7 @@ func (s *Store) GetSession(id string) (*Session, error) {
 }
 
 // UpdateSession updates an existing session after verifying the secret.
-func (s *Store) UpdateSession(id, secret, html string, password []byte, expiresAt time.Time) (*Session, error) {
+func (s *Store) UpdateSession(id, secret, html string, expiresAt time.Time) (*Session, error) {
 	// First verify the secret matches
 	session, err := s.GetSession(id)
 	if err != nil {
@@ -125,17 +113,12 @@ func (s *Store) UpdateSession(id, secret, html string, password []byte, expiresA
 		return nil, ErrForbidden
 	}
 
-	var passwordStr sql.NullString
-	if len(password) > 0 {
-		passwordStr = sql.NullString{String: string(password), Valid: true}
-	}
-
 	query := `
 		UPDATE sessions
-		SET html = ?, password = ?, expires_at = ?
+		SET html = ?, expires_at = ?
 		WHERE id = ? AND secret = ?
 	`
-	result, err := s.db.Exec(query, html, passwordStr, expiresAt.Format(time.RFC3339), id, secret)
+	result, err := s.db.Exec(query, html, expiresAt.Format(time.RFC3339), id, secret)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +134,6 @@ func (s *Store) UpdateSession(id, secret, html string, password []byte, expiresA
 	return &Session{
 		ID:        id,
 		Secret:    secret,
-		Password:  password,
 		HTML:      html,
 		CreatedAt: session.CreatedAt,
 		ExpiresAt: expiresAt,

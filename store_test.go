@@ -7,7 +7,6 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // newTestStore creates an in-memory SQLite store for testing.
@@ -40,12 +39,11 @@ func TestStore_CreateAndGet(t *testing.T) {
 		ID:        "testid123",
 		Secret:    "testsecret",
 		HTML:      "<html>test</html>",
-		Password:  nil,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 
-	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt)
+	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.ExpiresAt)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
@@ -89,12 +87,11 @@ func TestStore_UpdateSession(t *testing.T) {
 		ID:        "updateid",
 		Secret:    "initsecret",
 		HTML:      "<html>initial</html>",
-		Password:  nil,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 
-	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt)
+	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.ExpiresAt)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
@@ -102,10 +99,9 @@ func TestStore_UpdateSession(t *testing.T) {
 	// Update with new values
 	newHTML := "<html>updated</html>"
 	newExpires := time.Now().Add(2 * time.Hour)
-	var password []byte
 
 	// Use correct secret for update
-	updated, err := store.UpdateSession(session.ID, session.Secret, newHTML, password, newExpires)
+	updated, err := store.UpdateSession(session.ID, session.Secret, newHTML, newExpires)
 	if err != nil {
 		t.Fatalf("Failed to update session: %v", err)
 	}
@@ -137,17 +133,16 @@ func TestStore_UpdateSessionWrongSecret(t *testing.T) {
 		ID:        "wrongsecret",
 		Secret:    "correctsecret",
 		HTML:      "<html>test</html>",
-		Password:  nil,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 
-	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt)
+	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.ExpiresAt)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
 
-	_, err = store.UpdateSession(session.ID, "wrongsecret", "<html>updated</html>", nil, time.Now().Add(time.Hour))
+	_, err = store.UpdateSession(session.ID, "wrongsecret", "<html>updated</html>", time.Now().Add(time.Hour))
 	if err != ErrForbidden {
 		t.Errorf("Expected ErrForbidden, got: %v", err)
 	}
@@ -159,7 +154,7 @@ func TestStore_UpdateNonExistent(t *testing.T) {
 	store := newTestStore(t)
 	defer store.Close()
 
-	_, err := store.UpdateSession("nonexistent", "anyscret", "<html>test</html>", nil, time.Now().Add(time.Hour))
+	_, err := store.UpdateSession("nonexistent", "anyscret", "<html>test</html>", time.Now().Add(time.Hour))
 	if err != ErrSessionNotFound {
 		t.Errorf("Expected ErrSessionNotFound, got: %v", err)
 	}
@@ -175,12 +170,11 @@ func TestStore_DeleteSession(t *testing.T) {
 		ID:        "deleteid",
 		Secret:    "deletesecret",
 		HTML:      "<html>to delete</html>",
-		Password:  nil,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 
-	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt)
+	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.ExpiresAt)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
@@ -207,12 +201,11 @@ func TestStore_DeleteSessionWrongSecret(t *testing.T) {
 		ID:        "delwrong",
 		Secret:    "rightsecret",
 		HTML:      "<html>test</html>",
-		Password:  nil,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 
-	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt)
+	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.ExpiresAt)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
@@ -247,11 +240,10 @@ func TestStore_CleanupExpired(t *testing.T) {
 		ID:        "expiredid",
 		Secret:    "expiredsecret",
 		HTML:      "<html>expired</html>",
-		Password:  nil,
 		CreatedAt: time.Now().Add(-2 * time.Hour),
 		ExpiresAt: time.Now().Add(-1 * time.Hour), // Already expired
 	}
-	err := store.CreateSession(expiredSession.ID, expiredSession.Secret, expiredSession.HTML, expiredSession.Password, expiredSession.ExpiresAt)
+	err := store.CreateSession(expiredSession.ID, expiredSession.Secret, expiredSession.HTML, expiredSession.ExpiresAt)
 	if err != nil {
 		t.Fatalf("Failed to create expired session: %v", err)
 	}
@@ -261,11 +253,10 @@ func TestStore_CleanupExpired(t *testing.T) {
 		ID:        "validid",
 		Secret:    "validsecret",
 		HTML:      "<html>valid</html>",
-		Password:  nil,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour), // Not expired
 	}
-	err = store.CreateSession(validSession.ID, validSession.Secret, validSession.HTML, validSession.Password, validSession.ExpiresAt)
+	err = store.CreateSession(validSession.ID, validSession.Secret, validSession.HTML, validSession.ExpiresAt)
 	if err != nil {
 		t.Fatalf("Failed to create valid session: %v", err)
 	}
@@ -292,46 +283,6 @@ func TestStore_CleanupExpired(t *testing.T) {
 	}
 }
 
-func TestStore_SessionWithPassword(t *testing.T) {
-	t.Parallel()
-
-	store := newTestStore(t)
-	defer store.Close()
-
-	password := "testpassword123"
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		t.Fatalf("Failed to hash password: %v", err)
-	}
-
-	session := &Session{
-		ID:        "passwordid",
-		Secret:    "passwordsecret",
-		HTML:      "<html>protected</html>",
-		Password:  hash,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(time.Hour),
-	}
-
-	err = store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt)
-	if err != nil {
-		t.Fatalf("Failed to create session with password: %v", err)
-	}
-
-	retrieved, err := store.GetSession(session.ID)
-	if err != nil {
-		t.Fatalf("Failed to get session with password: %v", err)
-	}
-
-	if len(retrieved.Password) == 0 {
-		t.Error("Password should be stored")
-	}
-
-	if err := bcrypt.CompareHashAndPassword(retrieved.Password, []byte(password)); err != nil {
-		t.Error("Retrieved password hash does not match original password")
-	}
-}
-
 // TestStore_ConcurrentCleanup tests that cleanup works with concurrent database access.
 func TestStore_ConcurrentCleanup(t *testing.T) {
 	// Use a file-based DB for this test since we're testing WAL mode concurrency
@@ -345,11 +296,10 @@ func TestStore_ConcurrentCleanup(t *testing.T) {
 			ID:        string(rune('a' + i)),
 			Secret:    "secret",
 			HTML:      "<html>test</html>",
-			Password:  nil,
 			CreatedAt: time.Now().Add(-2 * time.Hour),
 			ExpiresAt: time.Now().Add(-time.Hour),
 		}
-		if err := store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt); err != nil {
+		if err := store.CreateSession(session.ID, session.Secret, session.HTML, session.ExpiresAt); err != nil {
 			t.Fatalf("Failed to create session: %v", err)
 		}
 	}
@@ -364,42 +314,6 @@ func TestStore_ConcurrentCleanup(t *testing.T) {
 	}
 }
 
-// TestStore_UpdatePassword tests updating a session with a new password.
-func TestStore_UpdatePassword(t *testing.T) {
-	t.Parallel()
-
-	store := newTestStore(t)
-	defer store.Close()
-
-	// Create session without password
-	session := &Session{
-		ID:        "nopassword",
-		Secret:    "secret",
-		HTML:      "<html>no password</html>",
-		Password:  nil,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(time.Hour),
-	}
-	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt)
-	if err != nil {
-		t.Fatalf("Failed to create session: %v", err)
-	}
-
-	// Update with password
-	newPassword := []byte("newpassword123")
-	hash, _ := bcrypt.GenerateFromPassword(newPassword, bcrypt.DefaultCost)
-
-	_, err = store.UpdateSession(session.ID, session.Secret, "<html>updated with password</html>", hash, time.Now().Add(time.Hour))
-	if err != nil {
-		t.Fatalf("Failed to update session with password: %v", err)
-	}
-
-	retrieved, _ := store.GetSession(session.ID)
-	if len(retrieved.Password) == 0 {
-		t.Error("Password should be set after update")
-	}
-}
-
 // TestStore_DeleteAllowsSubsequentCreate tests that deleting and recreating works.
 func TestStore_DeleteAllowsSubsequentCreate(t *testing.T) {
 	t.Parallel()
@@ -411,11 +325,10 @@ func TestStore_DeleteAllowsSubsequentCreate(t *testing.T) {
 		ID:        "recreate",
 		Secret:    "secret",
 		HTML:      "<html>original</html>",
-		Password:  nil,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
-	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt)
+	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.ExpiresAt)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
@@ -426,7 +339,7 @@ func TestStore_DeleteAllowsSubsequentCreate(t *testing.T) {
 	}
 
 	// Recreate with same ID but different content
-	err = store.CreateSession(session.ID, "newsecret", "<html>recreated</html>", nil, time.Now().Add(time.Hour))
+	err = store.CreateSession(session.ID, "newsecret", "<html>recreated</html>", time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("Failed to recreate session: %v", err)
 	}
@@ -451,18 +364,17 @@ func TestStore_UpdateExpiresAt(t *testing.T) {
 		ID:        "expiryupdate",
 		Secret:    "secret",
 		HTML:      "<html>test</html>",
-		Password:  nil,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
-	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt)
+	err := store.CreateSession(session.ID, session.Secret, session.HTML, session.ExpiresAt)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
 
 	// Update with longer expiry
 	newExpiry := time.Now().Add(48 * time.Hour)
-	_, err = store.UpdateSession(session.ID, session.Secret, "<html>test</html>", nil, newExpiry)
+	_, err = store.UpdateSession(session.ID, session.Secret, "<html>test</html>", newExpiry)
 	if err != nil {
 		t.Fatalf("Failed to update session: %v", err)
 	}
@@ -488,44 +400,5 @@ func TestStore_CleanupReturnsZeroForNoExpired(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("Expected 0 when no expired sessions, got %d", count)
-	}
-}
-
-// TestStore_PasswordHashRoundTrip tests that password hashes survive a store/get roundtrip.
-func TestStore_PasswordHashRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	store := newTestStore(t)
-	defer store.Close()
-
-	password := "securepassword"
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		t.Fatalf("Failed to generate hash: %v", err)
-	}
-
-	session := &Session{
-		ID:        "hashtest",
-		Secret:    "secret",
-		HTML:      "<html>test</html>",
-		Password:  hash,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(time.Hour),
-	}
-	err = store.CreateSession(session.ID, session.Secret, session.HTML, session.Password, session.ExpiresAt)
-	if err != nil {
-		t.Fatalf("Failed to create session: %v", err)
-	}
-
-	retrieved, _ := store.GetSession(session.ID)
-
-	// Verify we can still verify the password
-	if err := bcrypt.CompareHashAndPassword(retrieved.Password, []byte(password)); err != nil {
-		t.Error("Password verification failed after roundtrip")
-	}
-
-	// Verify wrong password fails
-	if err := bcrypt.CompareHashAndPassword(retrieved.Password, []byte("wrongpassword")); err == nil {
-		t.Error("Wrong password should not verify")
 	}
 }

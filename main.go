@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
@@ -21,20 +19,9 @@ func main() {
 	dbPath := flag.String("db", getEnv("DB_PATH", "./sessions.db"), "SQLite database path")
 	baseURL := flag.String("base-url", getEnv("BASE_URL", "http://localhost:8080"), "Base URL for generating share links")
 	cleanupInterval := flag.String("cleanup-interval", getEnv("CLEANUP_INTERVAL", "5m"), "TTL cleanup sweep interval")
-	cookieSecret := flag.String("cookie-secret", getEnv("COOKIE_SECRET", ""), "HMAC key for auth cookies (auto-generated if empty)")
+
 
 	flag.Parse()
-
-	// Generate random cookie secret if not provided
-	secret := *cookieSecret
-	if secret == "" {
-		bytes := make([]byte, 32)
-		if _, err := rand.Read(bytes); err != nil {
-			log.Fatalf("Failed to generate cookie secret: %v", err)
-		}
-		secret = hex.EncodeToString(bytes)
-		log.Printf("Generated random cookie secret: %s (set COOKIE_SECRET env var to persist)", secret)
-	}
 
 	// Parse cleanup interval
 	interval, err := time.ParseDuration(*cleanupInterval)
@@ -64,7 +51,7 @@ func main() {
 	StartCleanup(ctx, store, interval)
 
 	// Initialize handler
-	handler := NewHandler(store, *baseURL, []byte(secret))
+	handler := NewHandler(store, *baseURL)
 
 	// Create HTTP server
 	server := &http.Server{

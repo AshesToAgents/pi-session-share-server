@@ -8,7 +8,6 @@ services:
       - BASE_URL=${BASE_URL:-}
       - DB_PATH=/data/sessions.db
       - CLEANUP_INTERVAL=${CLEANUP_INTERVAL:-5m}
-      - COOKIE_SECRET=${COOKIE_SECRET:-}
     volumes:
       - db:/data
     restart: unless-stopped
