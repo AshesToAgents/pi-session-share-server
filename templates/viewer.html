@@ -143,6 +143,12 @@
             show('error');
         }
 
+        function base64urlToBase64(b64url) {
+            let b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4 !== 0) b64 += '=';
+            return b64;
+        }
+
         function base64ToBytes(base64) {
             const binString = atob(base64);
             const bytes = new Uint8Array(binString.length);
@@ -157,7 +163,7 @@
         }
 
         async function decrypt(ciphertext, key) {
-            const keyBytes = base64ToBytes(key);
+            const keyBytes = base64ToBytes(base64urlToBase64(key));
             
             const cryptoKey = await crypto.subtle.importKey(
                 'raw',
