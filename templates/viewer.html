@@ -86,9 +86,20 @@
             font-size: 14px;
             line-height: 1.5;
         }
+        body.content-visible {
+            background: white;
+            padding: 0;
+        }
+        body.content-visible .container {
+            max-width: none;
+            padding: 0;
+            border-radius: 0;
+            box-shadow: none;
+            min-height: 100vh;
+        }
         .iframe-container {
             width: 100%;
-            min-height: 500px;
+            min-height: 100vh;
         }
         iframe {
             width: 100%;
@@ -202,6 +213,7 @@
                 
                 const iframe = document.getElementById('session-frame');
                 iframe.srcdoc = html;
+                document.body.classList.add('content-visible');
                 iframe.onload = function() {
                     try {
                         const height = iframe.contentDocument.body.scrollHeight;
