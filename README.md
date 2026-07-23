@@ -1,6 +1,6 @@
 # pi-session-share-server
 
-A lightweight Go server for [pi-session-share](https://github.com/SunflowerFuchs/pi-session-share) — stores shared pi sessions as encrypted blobs. The server never sees plaintext content — all encryption/decryption happens client-side.
+A lightweight Go server for [pi-session-share](https://github.com/AshesToAgents/pi-session-share) — stores shared pi sessions as encrypted blobs. The server never sees plaintext content — all encryption/decryption happens client-side.
 
 ## How It Works
 
