@@ -201,6 +201,80 @@
             return bytesToString(decrypted);
         }
 
+        // --- Viewer URL parameters ---
+        //
+        // Recognized query params are forwarded into the embedded session
+        // page to control its initial state:
+        //
+        //   thinking=0|1      thinking blocks collapsed/expanded (default: 1)
+        //   tools=0|1         tool outputs expanded/collapsed (default: 0)
+        //   hidden=0|1        hidden messages visible (default: 0)
+        //   filter=MODE       sidebar tree filter: no-tools | user-only |
+        //                     labeled-only | all (default: default)
+        //   leafId, targetId  deep-link to a session entry
+        //
+        // Example: https://host/s/abc123?thinking=0&filter=no-tools#k=...
+        //
+        // Toggles are applied by clicking the export's own controls via an
+        // init script appended after its main script, so they run before the
+        // first paint and keep button states consistent.
+
+        const FILTER_MODES = ['no-tools', 'user-only', 'labeled-only', 'all'];
+
+        function escapeHtmlAttr(s) {
+            return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        }
+
+        function jsonLiteral(value) {
+            // Embed a JSON value in an inline <script> context
+            return JSON.stringify(value).replace(/</g, '\\u003c').replace(/&/g, '\\u0026');
+        }
+
+        function prepareSessionHtml(html) {
+            const params = new URLSearchParams(location.search);
+
+            // Deep-link params: the export reads these natively from a meta
+            // tag when it is loaded in an iframe via srcdoc
+            const deep = new URLSearchParams();
+            for (const name of ['leafId', 'targetId']) {
+                const value = params.get(name);
+                if (value && /^[A-Za-z0-9_-]+$/.test(value)) {
+                    deep.set(name, value);
+                }
+            }
+            if (deep.toString()) {
+                const meta = '<meta name="pi-url-params" content="' + escapeHtmlAttr(deep.toString()) + '">';
+                html = html.replace('</head>', meta + '</head>');
+            }
+
+            // Initial-state toggles, applied through the export's own buttons
+            const opts = {};
+            for (const name of ['thinking', 'tools', 'hidden']) {
+                const value = params.get(name);
+                if (value === '0' || value === '1') {
+                    opts[name] = value;
+                }
+            }
+            const filter = params.get('filter');
+            if (filter && FILTER_MODES.includes(filter)) {
+                opts.filter = filter;
+            }
+            if (Object.keys(opts).length === 0) {
+                return html;
+            }
+
+            const init =
+                '<script>(function(){try{' +
+                'var o=' + jsonLiteral(opts) + ';' +
+                'function c(s){var e=document.querySelector(s);if(e)e.click()}' +
+                "if(o.thinking==='0')c('[data-action=\"toggle-thinking\"]');" +
+                "if(o.tools==='1')c('[data-action=\"toggle-tools\"]');" +
+                "if(o.hidden==='1')c('[data-action=\"toggle-hidden-messages\"]');" +
+                "if(o.filter)c('.filter-btn[data-filter=\"'+o.filter+'\"]');" +
+                '}catch(e){}})();<\/script>';
+            return html.replace('</body>', init + '</body>');
+        }
+
         async function main() {
             const hash = location.hash;
             if (!hash || !hash.startsWith('#k=')) {
@@ -215,7 +289,7 @@
                 const html = await decrypt(ciphertext, key);
                 
                 const iframe = document.getElementById('session-frame');
-                iframe.srcdoc = html;
+                iframe.srcdoc = prepareSessionHtml(html);
                 document.body.classList.add('content-visible');
                 // The iframe is sized to the viewport and the exported session
                 // document scrolls internally. This keeps the export's sticky

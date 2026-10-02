@@ -72,6 +72,21 @@ GET /s/{id}
 
 Always serves the viewer page — a static HTML+JS page with the ciphertext embedded. The JavaScript reads the decryption key from the URL fragment and decrypts client-side.
 
+#### Viewer URL Parameters
+
+Query params on the share link control the initial view state. The decryption key stays in the fragment (`#k=...`), so it is still never sent to the server.
+
+| Param | Values | Default | Effect |
+|-------|--------|---------|--------|
+| `thinking` | `0` / `1` | `1` | Thinking blocks collapsed or expanded |
+| `tools` | `0` / `1` | `0` | Tool outputs collapsed or expanded |
+| `hidden` | `0` / `1` | `0` | Messages hidden by filters |
+| `filter` | `no-tools` / `user-only` / `labeled-only` / `all` | `default` | Initial sidebar tree filter |
+| `leafId` | entry id | session leaf | Deep-link: conversation branch to show |
+| `targetId` | entry id | — | Deep-link: entry to scroll to (use with `leafId`) |
+
+Example: `https://share.example.com/s/a7Xk9mQ?thinking=0&filter=no-tools#k=...`
+
 ## Configuration
 
 | Flag | Env | Default | Description |
