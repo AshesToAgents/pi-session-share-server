@@ -99,10 +99,13 @@
         }
         .iframe-container {
             width: 100%;
-            min-height: 100vh;
+            height: 100vh;
+            height: 100dvh;
         }
         iframe {
             width: 100%;
+            height: 100%;
+            display: block;
             border: none;
             background: white;
         }
@@ -214,16 +217,10 @@
                 const iframe = document.getElementById('session-frame');
                 iframe.srcdoc = html;
                 document.body.classList.add('content-visible');
-                iframe.onload = function() {
-                    try {
-                        const height = iframe.contentDocument.body.scrollHeight;
-                        if (height > 0) {
-                            iframe.style.height = height + 'px';
-                        }
-                    } catch (e) {
-                        // Cross-origin restrictions prevent measuring
-                    }
-                };
+                // The iframe is sized to the viewport and the exported session
+                // document scrolls internally. This keeps the export's sticky
+                // sidebar working and its layout adapting to content changes
+                // (collapsed thinking blocks, expanded tool output, ...).
                 show('content');
             } catch (err) {
                 showError('Failed to decrypt: ' + (err.message || 'Invalid key or corrupted data'));
